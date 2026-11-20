@@ -347,25 +347,30 @@ export function stepText(step: FarmStep): string {
   return s;
 }
 
-/** The first chain a protocol names, or a neutral phrase. */
+/** The chain a farm position opens on: the protocol's first chain, or a neutral phrase. */
 function chainName(p: SnapshotProtocol): string {
-  return p.chains.length > 0 ? p.chains[0]! : 'its main chain';
+  const [head] = p.chains;
+  return head ?? 'its main chain';
 }
 
 /** How much capital one farm position needs, from the protocol's own TVL. */
 function capitalFor(p: SnapshotProtocol): number {
-  if (p.tvl_usd >= 5_000_000_000) return 250;
-  if (p.tvl_usd >= 1_000_000_000) return 150;
-  if (p.tvl_usd >= 100_000_000) return 100;
+  const tiers: Array<[number, number]> = [
+    [5_000_000_000, 250],
+    [1_000_000_000, 150],
+    [100_000_000, 100],
+  ];
+  for (const [floor, capital] of tiers) {
+    if (p.tvl_usd >= floor) return capital;
+  }
   return 50;
 }
 
 /** How long to hold, from the protocol's age: younger protocols get a longer qualifying window. */
 function holdDaysFor(age: number | null): number {
-  if (age === null) return 30;
+  if (age === null || age >= 365) return 30;
   if (age < 180) return 60;
-  if (age < 365) return 45;
-  return 30;
+  return 45;
 }
 
 /** The category's one action, in the words a farmer can follow. */
@@ -409,40 +414,43 @@ function weeklyFor(p: SnapshotProtocol): string {
 export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   const chain = chainName(p);
   const capital = capitalFor(p);
-  const hold = holdDaysFor(age);
-  const action = actionFor(p, capital, chain);
-  return [
-    {
-      text: `Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.`,
-      cost: 'under $3 of gas for the first transaction',
-      time: '5 minutes',
-    },
-    {
-      text: action,
-      cost: `$${capital} of capital and about $${capital >= 150 ? 8 : 4} of gas`,
-      time: '15 minutes to set up',
-    },
-    {
-      text: weeklyFor(p),
-      cost: 'about $2 of gas a week',
-      time: '10 minutes a week',
-    },
-    {
-      text: `Hold the position for at least ${hold} days so the activity is counted in more than one snapshot.`,
-      cost: `the $${capital} stays in the position`,
-      time: `${hold} days`,
-    },
-    {
-      text: `Before you withdraw, open the protocol's own points or rewards page and claim only from the link it publishes.`,
-      cost: 'no fee to check, and never pay to claim',
-      time: '10 minutes',
-    },
-    {
-      text: `Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.`,
-      cost: 'nothing but the log',
-      time: '5 minutes',
-    },
-  ];
+  const holdDays = holdDaysFor(age);
+  const mainAction = actionFor(p, capital, chain);
+  const weeklyAction = weeklyFor(p);
+  const setupGas = capital >= 150 ? 8 : 4;
+
+  const plan: FarmStep[] = [];
+  plan.push({
+    text: `Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.`,
+    cost: 'under $3 of gas for the first transaction',
+    time: '5 minutes',
+  });
+  plan.push({
+    text: mainAction,
+    cost: `$${capital} of capital and about $${setupGas} of gas`,
+    time: '15 minutes to set up',
+  });
+  plan.push({
+    text: weeklyAction,
+    cost: 'about $2 of gas a week',
+    time: '10 minutes a week',
+  });
+  plan.push({
+    text: `Hold the position for at least ${holdDays} days so the activity is counted in more than one snapshot.`,
+    cost: `the $${capital} stays in the position`,
+    time: `${holdDays} days`,
+  });
+  plan.push({
+    text: `Before you withdraw, open the protocol's own points or rewards page and claim only from the link it publishes.`,
+    cost: 'no fee to check, and never pay to claim',
+    time: '10 minutes',
+  });
+  plan.push({
+    text: `Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.`,
+    cost: 'nothing but the log',
+    time: '5 minutes',
+  });
+  return plan;
 }
 
 /** The live-token protocols, by market cap, for the dashboard's Live token view. */
